@@ -522,6 +522,7 @@ static double pi = 3.1415926535897931;
         pardefines = ""
 ##        parundefines = ""
         vardefines = ""
+        auxvardefines = ""
 ##        varundefines = ""
         inpdefines = ""
 ##        inpundefines = ""
@@ -546,6 +547,8 @@ static double pi = 3.1415926535897931;
             vardefines += self.funcspec._defstr+" "+v+"\tY_["+str(i)+"]\n"
 ##            # add to undefines
 ##            varundefines += self.funcspec._undefstr+" "+v+"\n"
+        for i, v in enumerate(self.funcspec.auxvars):
+            auxvardefines += self.funcspec._defstr+" "+v+"\t("+self.funcspec._auxdefs_parsed[v]+")\n"
         for i in range(len(self.funcspec.inputs)):
             inp = inames[i]
             # add to defines
@@ -553,7 +556,7 @@ static double pi = 3.1415926535897931;
 ##            # add to undefines
 ##            inpundefines += self.funcspec._undefstr+" "+inp+"\n"
         allfilestr += "\n/* Variable, parameter, and input definitions: */ \n" \
-            + pardefines + vardefines + inpdefines + "\n"
+            + pardefines + vardefines + auxvardefines + inpdefines + "\n"
         # add signature for auxiliary functions
         if self.funcspec.auxfns:
             allfilestr += "\n"
