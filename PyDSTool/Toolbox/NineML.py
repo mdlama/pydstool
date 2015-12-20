@@ -9,7 +9,6 @@ from __future__ import division, absolute_import
 
 from PyDSTool import *
 from PyDSTool.common import _seq_types, _num_types
-import PyDSTool.Redirector as redirc
 
 import numpy as np
 from scipy import linspace, isfinite, sign, alltrue, sometrue
@@ -31,7 +30,7 @@ __all__ = _functions + _classes + _features
 # ----------------------------------------------------------------------------
 
 try:
-    import nineml.abstraction_layer as al
+    import nineml.abstraction as al
 except ImportError:
     raise ImportError("NineML python API is needed for this toolbox to work")
 
@@ -53,12 +52,10 @@ def get_nineml_model(c, model_name, target='Vode', extra_args=None,
     if alg_args is None:
         alg_args = {}
 
-    dyn = c.dynamics
-
     # lists
     pars = [p.name for p in c.parameters]
-    vars = dyn.state_variables_map.keys()
-    fns = c.aliases_map.keys()
+    vars = list(c.state_variable_names)
+    fns = list(c.alias_names)
 
     # Turn aliases into function defs:
     # multiple passes until all dependencies resolved
@@ -67,9 +64,9 @@ def get_nineml_model(c, model_name, target='Vode', extra_args=None,
     sigs = {}
 
     while not done:
-        done = all([a.lhs in sigs for a in dyn.aliases])
-        for a in dyn.aliases:
-            deps = list(a.rhs_names)
+        done = all([str(a.lhs) in sigs for a in c.aliases])
+        for a in c.aliases:
+            deps = list(str(s) for s in a.rhs_symbols)
             resolved = True
             fnlist = []
             sig = []
@@ -80,29 +77,29 @@ def get_nineml_model(c, model_name, target='Vode', extra_args=None,
                     fnlist.append(d)
                 elif d in vars:
                     sig.append(d)
-            dependencies[a.lhs] = fnlist
+            dependencies[str(a.lhs)] = fnlist
             if resolved:
                 for f in fnlist:
                     sig.extend(sigs[f])
-                sigs[a.lhs] = makeSeqUnique(list(sig))
+                sigs[str(a.lhs)] = makeSeqUnique(list(sig))
 
     # Quantity types
     declare_fns = []
 
-    for a in dyn.aliases:
-        sig = sigs[a.lhs]
-        fnspec = QuantSpec(a.lhs, a.rhs)
+    for a in c.aliases:
+        sig = sigs[str(a.lhs)]
+        fnspec = QuantSpec(str(a.lhs), a.rhs_str)
         fnspec.mapNames({'heaviside': 'heav'})
         # add arguments to the function calls
-        for f in dependencies[a.lhs]:
+        for f in dependencies[str(a.lhs)]:
             fi_list = [i for i in range(len(fnspec.parser.tokenized)) if fnspec.parser.tokenized[i] == f]
             offset = 0
             for fi in fi_list:
                 arg_spec = QuantSpec('args', '(' + ','.join(sigs[f]) + ')')
                 new_defstr = ''.join(fnspec[:fi+1+offset]) + str(arg_spec) + ''.join(fnspec[fi+1+offset:])
-                fnspec = QuantSpec(a.lhs, new_defstr)
+                fnspec = QuantSpec(str(a.lhs), new_defstr)
                 offset += len(arg_spec.parser.tokenized)
-        declare_fns.append(Fun(str(fnspec), sig, name=a.lhs))
+        declare_fns.append(Fun(str(fnspec), sig, name=str(a.lhs)))
 
     declare_pars = [Par(p) for p in pars]
 
@@ -117,8 +114,8 @@ def get_nineml_model(c, model_name, target='Vode', extra_args=None,
     reg_info_list = []
     reg_models = {}
 
-    all_reg_names = c.regimes_map.keys()
-    num_regs = len(c.regimes_map)
+    all_reg_names = list(c.regime_names)
+    num_regs = c.num_regimes
     if num_regs > 1:
         is_hybrid = True
     else:
@@ -143,10 +140,10 @@ def get_nineml_model(c, model_name, target='Vode', extra_args=None,
     for reg_ix, r in enumerate(c.regimes):
         declare_vars = []
         new_vars = get_regime_model(r, fns, sigs)
-        if len(new_vars) != len(c.state_variables_map):
+        if len(new_vars) != c.num_state_variables:
             if len(new_vars) == 0:
                 reg_type = 'ExplicitFn'
-                for vname in c.state_variables_map:
+                for vname in c.state_variable_names:
                     new_vars.append( Var('initcond(%s)'%vname, name=vname, specType='ExpFuncSpec') )
                 if is_hybrid:
                     new_vars.append( Var('%i'%reg_ix, name='regime_', specType='ExpFuncSpec',
@@ -154,7 +151,7 @@ def get_nineml_model(c, model_name, target='Vode', extra_args=None,
             else:
                 # have to make ODEs with 0 for their RHS
                 reg_type = targetGen
-                for vname in remain(c.state_variables_map, [v.name for v in new_vars]):
+                for vname in remain(list(c.state_variable_names), [v.name for v in new_vars]):
                     new_vars.append( Var('0', name=vname, specType='RHSfuncSpec') )
                 if is_hybrid:
                     new_vars.append( Var('0', name='regime_', specType='RHSfuncSpec',
@@ -190,7 +187,7 @@ def get_nineml_model(c, model_name, target='Vode', extra_args=None,
             raise NotImplementedError("Non-transition events not yet implemented")
 
         for e in r.on_conditions:
-            defq = QuantSpec('rhs', e.trigger.rhs)
+            defq = QuantSpec('rhs', e.trigger.rhs_str)
             toks = defq.parser.tokenized
             if '=' in toks:
                 ix = toks.index('=')
@@ -210,7 +207,7 @@ def get_nineml_model(c, model_name, target='Vode', extra_args=None,
             else:
                 raise ValueError("Event type not implemented!")
             new_defstr = ''.join(toks[:ix]) + '-' + '(' + ''.join(toks[ix+1:]) + ')'
-            evnames = [eo.port_name for eo in e.event_outputs]
+            evnames = [oe.port_name for oe in e.output_events]
             if evnames == []:
                 # no outputs, must create an event name based on LHS of trigger condition
                 if "".join(toks[:ix]) == 't':
@@ -235,7 +232,7 @@ def get_nineml_model(c, model_name, target='Vode', extra_args=None,
                                 flatspec=reg_spec.flatSpec))
                 edict = {}
                 for s in e.state_assignments:
-                    edict[s.lhs] = s.rhs
+                    edict[str(s.lhs)] = s.rhs_str
                 if is_hybrid:
                     edict['regime_'] = str(reg_name_to_ix[reg_target])
                 if len(edict) == 0:
@@ -294,7 +291,7 @@ def get_regime_model(r, fns, sigs):
         for a in atoms:
             if a != 't':
                 vname = a
-        varspec = QuantSpec('D_'+vname, dx.rhs)
+        varspec = QuantSpec('D_'+vname, dx.rhs_str)
         fns_used = intersect(varspec.freeSymbols, fns)
         for f in fns_used:
             fi = varspec.parser.tokenized.index(f)

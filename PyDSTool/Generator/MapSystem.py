@@ -21,11 +21,6 @@ from numpy import Inf, NaN, isfinite, sometrue, alltrue, array, transpose, \
 import math, random, types
 from copy import copy, deepcopy
 import six
-try:
-    import psyco
-    HAVE_PSYCO = True
-except ImportError:
-    HAVE_PSYCO = False
 
 
 class MapSystem(discGen):
@@ -109,14 +104,6 @@ class MapSystem(discGen):
                 except KeyError:
                     # not a user-defined aux fn
                     pass
-            # bind all the auxfns here
-            if HAVE_PSYCO:
-                psyco.bind(getattr(self, fninfo[1]))
-                try:
-                    psyco.bind(self.auxfns[auxfnname])
-                except KeyError:
-                    # not a user-defined aux fn
-                    pass
         if self.funcspec.targetlang == 'python':
             # Add the spec function to this Generator's namespace
             fninfo = self.funcspec.spec
@@ -131,8 +118,6 @@ class MapSystem(discGen):
                 raise
             self._funcreg[fninfo[1]] = ('self', fnstr)
             setattr(self, fninfo[1], six.create_bound_method(locals()[fninfo[1]], self))
-            if HAVE_PSYCO and not self._solver:
-                psyco.bind(getattr(self, fninfo[1]))
             # Add the auxiliary spec function (if present) to this
             # Generator's namespace
             if self.funcspec.auxspec != '':
@@ -148,8 +133,6 @@ class MapSystem(discGen):
                     raise
                 self._funcreg[fninfo[1]] = ('self', fnstr)
                 setattr(self, fninfo[1], six.create_bound_method(locals()[fninfo[1]], self))
-                if HAVE_PSYCO and not self._solver:
-                    psyco.bind(getattr(self, fninfo[1]))
 
 
     # Method for pickling protocol (setstate same as default)
@@ -229,7 +212,8 @@ class MapSystem(discGen):
         #   'algparams', 'tdata', 'xdomain', 'inputs', 'pdomain']
         if 'ics' in kw:
             for k_temp, v in kw['ics'].items():
-                k = self._FScompatibleNames(k_temp)
+                # str() ensures that Symbolic objects can be passed
+                k = str(self._FScompatibleNames(k_temp))
                 if k in self.funcspec.vars+self.funcspec.auxvars:
                     self._xdatadict[k] = ensurefloat(v)
                 else:
@@ -267,7 +251,7 @@ class MapSystem(discGen):
             self.indepvariable.depdomain.set(self.tdata)
         if 'xdomain' in kw:
             for k_temp, v in kw['xdomain'].items():
-                k = self._FScompatibleNames(k_temp)
+                k = str(self._FScompatibleNames(k_temp))
                 if k in self.funcspec.vars+self.funcspec.auxvars:
                     if isinstance(v, _seq_types):
                         assert len(v) == 2, \
@@ -300,7 +284,7 @@ class MapSystem(discGen):
                     ev.xdomain[k] = v
         if 'pdomain' in kw:
             for k_temp, v in kw['pdomain'].items():
-                k = self._FScompatibleNames(k_temp)
+                k = str(self._FScompatibleNames(k_temp))
                 if k in self.funcspec.pars:
                     if isinstance(v, _seq_types):
                         assert len(v) == 2, \
@@ -319,7 +303,7 @@ class MapSystem(discGen):
                 else:
                     raise ValueError('Illegal parameter name')
                 try:
-                    self.parameterDomains[k].depdomain.set(v)
+                    self.parameterDomains[k].set(v)
                 except TypeError:
                     raise TypeError('xdomain must be a dictionary of parameter'
                                       ' names -> valid interval 2-tuples or '
@@ -334,7 +318,7 @@ class MapSystem(discGen):
             assert self.numpars > 0, ('No pars were declared for this '
                                       'model')
             for k_temp, v in kw['pars'].items():
-                k = self._FScompatibleNames(k_temp)
+                k = str(self._FScompatibleNames(k_temp))
                 if k in self.pars:
                     cval = self.parameterDomains[k].contains(v)
                     if self.checklevel < 3:

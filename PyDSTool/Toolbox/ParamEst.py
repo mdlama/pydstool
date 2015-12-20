@@ -13,8 +13,9 @@ from PyDSTool.common import Utility, _seq_types, metric, args, sortedDictValues,
 from PyDSTool.utils import intersect, filteredDict
 from PyDSTool.errors import *
 from PyDSTool import common
+from PyDSTool.core.context_managers import RedirectNoOp, RedirectStderr, \
+    RedirectStdout
 from PyDSTool.ModelContext import qt_feature_leaf, process_raw_residual
-import PyDSTool.Redirector as redirc
 from PyDSTool.Toolbox.optimizers import *
 
 try:
@@ -37,20 +38,12 @@ import sys, traceback
 import operator
 
 from numpy import linspace, array, arange, zeros, sum, power, \
-     swapaxes, asarray, ones, alltrue, concatenate, rank, ravel, argmax, \
+     swapaxes, asarray, ones, alltrue, concatenate, ravel, argmax, \
      argmin, argsort, float, sign
 import numpy as np
 
 import math, types
 from copy import copy, deepcopy
-
-try:
-    # use psyco JIT byte-compiler optimization, if available
-    import psyco
-    HAVE_PSYCO = True
-except ImportError:
-    HAVE_PSYCO = False
-
 # ------------------------------------------------------------------------
 
 _pest_classes = ['ParamEst', 'LMpest', 'BoundMin', 'residual_fn_context',
@@ -86,8 +79,6 @@ solver_lookup = {'RecursiveBacktrackingSolver': RecursiveBacktrackingSolver,
 # ----
 # Used to suppress output from legacy codes
 
-rout = redirc.Redirector(redirc.STDOUT)
-rerr = redirc.Redirector(redirc.STDERR)
 
 # ----------------------------------------------------------------------------
 
@@ -717,8 +708,7 @@ class ParamEst(Utility):
 
     def __init__(self, **kw):
         self.needKeys = ['freeParams', 'testModel', 'context']
-        self.optionalKeys = ['verbose_level', 'usePsyco',
-                             'residual_fn', 'extra_pars']
+        self.optionalKeys = ['verbose_level', 'residual_fn', 'extra_pars']
         try:
             self.context = kw['context']
             if isinstance(kw['freeParams'], list):
@@ -737,14 +727,6 @@ class ParamEst(Utility):
         except KeyError:
             raise PyDSTool_KeyError('Incorrect argument keys passed')
         self.foundKeys = len(self.needKeys)   # lazy way to achieve this!
-        if 'usePsyco' in kw:
-            if HAVE_PSYCO and kw['usePsyco']:
-                self.usePsyco = True
-            else:
-                self.usePsyco = False
-            self.foundKeys += 1
-        else:
-            self.usePsyco = False
         if 'residual_fn' in kw:
             self.setFn(kw['residual_fn'])
             self.foundKeys += 1
@@ -808,8 +790,6 @@ class ParamEst(Utility):
         self.fn = fn
         # reciprocal reference
         self.fn.pest = self
-        if self.usePsyco:
-            psyco.bind(self.fn)
 
 
     def evaluate(self, extra_record_info=None):
@@ -1090,33 +1070,27 @@ class LMpest(ParamEst):
 
         self.reset_log()
         # perform least-squares fitting
-        if not verbose:
-            rout.start()
-            rerr.start()
+        rout = RedirectNoOp() if verbose else RedirectStdout(os.devnull)
+        rerr = RedirectNoOp() if verbose else RedirectStderr(os.devnull)
         try:
-            results = minpack.leastsq(self._residuals,
-                               self._p_start,
-                               args   = self._args,
-                               Dfun   = self._Dfun,
-                               full_output = self._full_output,
-                               col_deriv   = self._col_deriv,
-                               ftol   = self._ftol,
-                               xtol   = self._xtol,
-                               gtol   = self._gtol,
-                               maxfev = self._maxfev,
-                               epsfcn = self._epsfcn,
-                               factor = self._factor,
-                               diag   = self._diag)
+            with rout, rerr:
+                results = minpack.leastsq(self._residuals,
+                                          self._p_start,
+                                          args   = self._args,
+                                          Dfun   = self._Dfun,
+                                          full_output = self._full_output,
+                                          col_deriv   = self._col_deriv,
+                                          ftol   = self._ftol,
+                                          xtol   = self._xtol,
+                                          gtol   = self._gtol,
+                                          maxfev = self._maxfev,
+                                          epsfcn = self._epsfcn,
+                                          factor = self._factor,
+                                          diag   = self._diag)
         except:
-            if not verbose:
-                out = rout.stop()
-                err = rerr.stop()
             print("Calculating residual failed for pars:", \
                   parsOrig)
             raise
-        if not verbose:
-            out = rout.stop()
-            err = rerr.stop()
 
         # build return information
         success = results[4] == 1
@@ -1265,23 +1239,13 @@ class BoundMin(ParamEst):
 
         self.reset_log()
         full_output = 1
-        if not verbose:
-            rout.start()
-            rerr.start()
-        try:
+        rout = RedirectNoOp() if verbose else RedirectStdout(os.devnull)
+        rerr = RedirectNoOp() if verbose else RedirectStderr(os.devnull)
+        with rout, rerr:
             results = optimize.fminbound(self.fn.residual, parConstraints[0],
                         parConstraints[1], extra_args, xtol, maxiter,
-                                     full_output,
-                                     int(verbose))
-        except:
-            if not verbose:
-                out = rout.stop()
-                err = rerr.stop()
-            raise
-        else:
-            if not verbose:
-                out = rout.stop()
-                err = rerr.stop()
+                                    full_output,
+                                    int(verbose))
 
         # build return information
         success = results[2] == 0

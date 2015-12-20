@@ -1369,11 +1369,26 @@ class Model(object):
         estruct = self.modelInfo[target]['dsi'].get('eventstruct', ics, t)
         estruct(verbosity)
 
+    def getDSEvent(self, target, evname, ics=None, t=0):
+        """
+        Return Event object from target (name of generator/sub-model) with name
+        evname
+        """
+        if ics is None:
+            ics = self.icdict
+        estruct = self.modelInfo[target]['dsi'].get('eventstruct', ics, t)
+        # getAllEvents returns a list of pairs (name, Event)
+        all_ev_dict = dict(estruct.getAllEvents())
+        try:
+            return all_ev_dict[evname]
+        except KeyError:
+            raise ValueError("No such event found in target sub-model")
+
     def getDSEventTerm(self, target, flagVal=True, ics=None, t=0):
         """
         List of events in target which are terminal/non-terminal according to
         value of flagVal.
-        target -- name of generators in model (cannot be list)
+        target -- name of generator/sub-model in model (cannot be list)
         flagVal -- True (terminal) or False (non-terminal)
         """
         if ics is None:
@@ -1390,7 +1405,7 @@ class Model(object):
     def setDSEventTerm(self, target, eventTarget, flagVal, ics=None, t=0):
         """
         Set event in a specific generator to be (non)terminal.
-        target -- name or list of names of generators in model.
+        target -- name or list of names of generators/sub-models in model.
         eventTarget -- name or list of names of events in specified generator(s)
         flagVal -- True (event terminal) or False (event non-terminal)
 
@@ -1411,7 +1426,7 @@ class Model(object):
         """
         List of events in target which are active/inactive according to
         value of flagVal.
-        target -- name of generators in model (cannot be list)
+        target -- name of generator/sub-model in model (cannot be list)
         flagVal -- True (active) or False (inactive)
         """
         if ics is None:
@@ -1428,7 +1443,7 @@ class Model(object):
     def setDSEventActive(self, target, eventTarget, flagVal, ics=None, t=0):
         """
         Set event in a specific generator to be (in)active.
-        target -- name or list of names of generators in model.
+        target -- name or list of names of generators/sub-models in model.
         eventTarget -- name or list of names of events in specified generator(s)
         flagVal -- True (event active) or False (event inactive)
 
@@ -1703,8 +1718,10 @@ class NonHybridModel(Model):
         """
         # get Generator as 'ds'
         ds = list(self.registry.values())[0]
-        fscm = ds._FScompatibleNames
-        fscmInv = ds._FScompatibleNamesInv
+        # filer to ensure only variable names get transformed
+        fscm_dict = filteredDict(ds._FScompatibleNames.lookupDict, xdict.keys())
+        fscm = symbolMapClass(fscm_dict)
+        fscmInv = fscm.inverse()
         vars = ds.get('funcspec').vars   # FS compatible
         x_fs = filteredDict(fscm(xdict), vars)
         # in case ds i.c.'s are different or not set yet (NaN's)
@@ -1846,6 +1863,7 @@ class NonHybridModel(Model):
           asarray  (Bool, optional, default False) If true, will return an array
                    in state name alphabetical order, else a Point
         """
+        ds = list(self.registry.values())[0]
         fscm = ds._FScompatibleNames
         fscmInv = ds._FScompatibleNamesInv
         x_fs = filteredDict(fscm(xdict), ds.get('funcspec').vars)
@@ -2713,6 +2731,8 @@ class HybridModel(Model):
 
         xdict = {}
         for xname, value in self.icdict.items():
+            # ensure string in case Symbolic
+            xname = str(xname)
             if xname not in self.allvars:
                 raise ValueError("Invalid variable name in initial "
                                    "conditions: " + xname)

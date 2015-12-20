@@ -16,13 +16,6 @@ from numpy import Inf, NaN, isfinite, sometrue, alltrue
 import math, random
 import os
 from copy import copy, deepcopy
-try:
-    # use pscyo JIT byte-compiler optimization, if available
-    import psyco
-    HAVE_PSYCO = True
-except ImportError:
-    HAVE_PSYCO = False
-
 # -----------------------------------------------------------------------------
 
 __all__ = ['ctsGen', 'discGen', 'theGenSpecHelper', 'Generator',
@@ -966,11 +959,16 @@ class Generator(object):
 
     def validateSpec(self):
         try:
+            assert self.funcspec
             assert self.dimension > 0
-            assert len(self.variables) == self.dimension
+            try:
+                num_auxvars = len(self.funcspec.auxvars)
+            except AttributeError:
+                # no auxvars
+                num_auxvars = 0
+            assert len(self.variables) == self.dimension + num_auxvars
             # don't assert self.pars because not all systems need them
             assert self.indepvariable.name == 't'
-            assert self.funcspec
             assert self.checklevel in range(4)
             #  check that all names in individual dicts are all in _registry
             if self.pars:
@@ -993,7 +991,11 @@ class Generator(object):
             # (unnecessary for dictionary version of FuncSpec)
             if isinstance(self.funcspec, FuncSpec):
                 varnames = list(self.variables.keys())
-                fsvars = self.funcspec.vars
+                try:
+                    auxvars = self.funcspec.auxvars
+                except AttributeError:
+                    auxvars = []
+                fsvars = self.funcspec.vars + auxvars
                 if len(varnames) > 1:
                     varnames.sort()
                     fsvars.sort()
@@ -1022,6 +1024,22 @@ class Generator(object):
                         assert inputnames == fsinputs
             else:
                 assert len(self.funcspec) == self.dimension
+            # check that all aux function specs in events made it into funcspec
+            # (situation not caught on Vode, and leads to weird errors with C
+            # integrators) -- only check names, not definitions
+            try:
+                fnspecs = self.funcspec.auxfns.keys()
+            except AttributeError:
+                # no aux fns declared
+                pass
+            else:
+                for ename, ev in self.eventstruct.events.items():
+                    for fname in remain(ev._fnspecs.keys(), ('if', 'initcond',
+                                                     'heav', 'globalindepvar',
+                                                     'getindex', 'getbound')):
+                        assert fname in fnspecs, "All aux functions from " + \
+                               "events must be declared to FuncSpec too"
+
         except:
             print('Invalid system specification')
             raise
@@ -1399,6 +1417,7 @@ class ctsGen(Generator):
         # only check that domain is cts, range may be a finite subset of points
         assert isinputcts(self.indepvariable), ("self.indepvariable must be continuously-"
                                          "defined for this class")
+        Generator.validateSpec(self)
 
     def __del__(self):
         Generator.__del__(self)
@@ -1411,6 +1430,7 @@ class discGen(Generator):
     def validateSpec(self):
         assert isdiscrete(self.indepvariable), ("self.indepvariable must be discretely-"
                                          "defined for this class")
+        Generator.validateSpec(self)
 
     def __del__(self):
         Generator.__del__(self)

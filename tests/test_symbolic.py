@@ -100,6 +100,14 @@ def test_symbolic():
     k = expr2fun('-f(c,d)+b', f=fnspec['f'], b=0.5, a=1)
     assert k(1,2) == -4.5
 
+    # alternate scope and testing embedded dynamic pars in both
+    # main expression and sub-expressions like f()
+    l = expr2fun('-f(c,d)+b', ensure_dynamic={'a':1, 'c':2},
+                 **fnspec)
+    assert l._args == ['d', 'b']
+    assert l._call_spec == "-self.f(self._pardict['c'],d)+b"
+    assert l(1,2) == -2
+
     s='1+a/(f(x,y)-3)+h(2)'
     t=s.replace('y','g(x,z)')
     u=t.replace('z','f(z)')
@@ -365,3 +373,14 @@ def test_symbolic():
     print("F(3,2,Sin(x0))) = [3*Sin(x0),15,Pow(Sin(x0),0.5)] ...")
     print("  ... even though x0 is a bound name inside definition of F")
     assert str(F(3,2,Sin(x0)))=='[3*Sin(x0),15,Pow(Sin(x0),0.5)]'
+
+    # moved from test_symbolic_diff.py
+    p0 = Var('p0')
+    p1 = Var('p1')
+
+    pv = Var([p0, p1], 'p')
+    assert str(pv()) == '[p0,p1]'
+    assert str(pv.eval()) == '[p0,p1]'
+
+    u = Var('Pi/(2*Sin(Pi*t/2))', 'u')
+    assert u.eval(t=1).tonumeric() == pi / 2

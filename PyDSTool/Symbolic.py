@@ -71,18 +71,18 @@ from .utils import *
 from numpy import array, Inf, NaN, isfinite, mod, sum, float64, int32
 from numpy import sometrue, alltrue
 # replacements of math functions so that expr2fun etc. produce vectorizable math functions
-from numpy import arccos, arcsin, arctan, arctan2, arccosh, arcsinh, arctanh, ceil, cos, cosh
-from numpy import exp, fabs, floor, fmod, frexp, hypot, ldexp, log, log10, modf, power
-from numpy import sin, sinh, sqrt, tan, tanh
+from numpy import arccos, arcsin, arctan, arctan2, arccosh, arcsinh, arctanh, \
+     ceil, cos, cosh, exp, fabs, floor, fmod, frexp, hypot, ldexp, log, log10, \
+     modf, power, sin, sinh, sqrt, tan, tanh
 # for compatibility with numpy 1.0.X
 from math import degrees, radians
 # constants
 from math import pi, e
 
 from copy import copy, deepcopy
-import math, random, numpy
+import math, random, numpy, scipy, scipy.special
 
-# alternative names for inverse trig functions, to be supported by expr2fun, symbolic eval, etc.
+# alternative names for inverse trig functions, supported by expr2fun, symbolic eval, etc.
 asin = arcsin
 acos = arccos
 atan = arctan
@@ -100,9 +100,14 @@ math_globals = dict(zip(math_dir,[getattr(math, m) for m in math_dir]))
 math_globals['Inf'] = Inf
 math_globals['NaN'] = NaN
 
-# protected names come from parseUtils.py
+# protected (function) names come from parseUtils.py
+# (constants are all-caps and are filtered out)
+# Adds scipy special function names *without* 'special_' prefix
+# but does not include logical infix operators from builtins
 allmathnames = [a for a in protected_mathnames + protected_randomnames + \
-                ['abs', 'pow', 'min', 'max', 'sum'] if not a.isupper()]
+                protected_scipynames + protected_numpynames + \
+                scipy_specialfns if not a.isupper()] + \
+                ['abs', 'pow', 'min', 'max', 'sum']
 allmathnames_symbolic = [a.title() for a in allmathnames]
 
 # the definitions for the math names are made lower down in this file
@@ -145,12 +150,31 @@ for symb in allmathnames_symbolic:
 mathlookup = {}.fromkeys(protected_mathnames, 'math.')
 randomlookup = {}.fromkeys(protected_randomnames, 'random.')
 builtinlookup = {'abs': '', 'pow': '', 'max': '', 'min': '', 'sum': ''}
+numpylookup = {}.fromkeys(protected_numpynames, 'numpy.')
+scipylookup = {}.fromkeys(protected_scipynames, 'scipy.')
+scipylookup.update( {}.fromkeys(scipy_specialfns, 'scipy.special.') )
 modlookup = {}
 modlookup.update(mathlookup)
 modlookup.update(randomlookup)
 modlookup.update(builtinlookup)
+modlookup.update(scipylookup)
+modlookup.update(numpylookup)
 
 # only rename actual functions (or callable objects)
+
+# DEBUG VERSION
+#funcnames = []
+#for n in allmathnames:
+#    try:
+#        f = eval(modlookup[n]+n)
+#    except:
+#        print("Failed on", n)
+#        raise
+#    if hasattr(f, "__call__"):
+#        print(n)
+#        funcnames.append(n)
+
+# REGULAR VERSION
 funcnames = [n for n in allmathnames if hasattr(eval(modlookup[n]+n),
                                                 "__call__")]
 
@@ -387,7 +411,8 @@ def _join_sublist(qspec, math_globals, local_free, eval_at_runtime):
         return str(_eval(qspec, math_globals, local_free, eval_at_runtime))
 
 
-def expr2fun(qexpr, ensure_args=None, ensure_dynamic=None, **values):
+def expr2fun(qexpr, ensure_args=None, ensure_dynamic=None, fn_name='',
+             for_funcspec=True, **values):
     """qexpr is a string, Quantity, or QuantSpec object.
     values is a dictionary binding free names to numerical values
     or other objects defined at runtime that are in local scope.
@@ -415,6 +440,13 @@ def expr2fun(qexpr, ensure_args=None, ensure_dynamic=None, **values):
     accessible numeric values that can be looked up during function
     evaluation, using the optional ensure_dynamic dictionary. Later,
     you can modify the values in this dictionary directly.
+
+    You can name the function explicitly using fn_name option. This will
+    become the __name__ attribute of the generated class.
+
+    You can force the processing to be for non-FuncSpec output (e.g. to
+    support full Python syntax) by setting for_funcspec = False. Default
+    is True.
 
     The arguments to the returned callable function object are
     given by its attribute '_args', and its definition string by
@@ -457,14 +489,14 @@ def expr2fun(qexpr, ensure_args=None, ensure_dynamic=None, **values):
         else:
             vs = str(v)
         if isNumericToken(vs):
-            if '.' in k:
+            if '.' in k and for_funcspec:
                 kFS = k.replace('.','_')
                 h_map.update({k: kFS})
             else:
                 kFS = k
             valDict[kFS] = vs
         elif not isinstance(vs, Fun):
-            if '.' in k:
+            if '.' in k and for_funcspec:
                 kFS = k.replace('.','_')
                 h_map.update({k: kFS})
             else:
@@ -479,14 +511,22 @@ def expr2fun(qexpr, ensure_args=None, ensure_dynamic=None, **values):
         qvar = Var(qexpr, 'q')
     except TypeError as e:
         raise TypeError("Invalid qexpr argument type: " + str(e))
-    fspec = qvar.eval(**valDict)
+    # eval will fail if qvar contains python syntax outside of
+    # math expressions, e.g. for auto-code gen involving dictionary
+    # mapping lookups. So, at least only eval if valDict is non-empty
+    if len(valDict) > 0:
+        fspec = qvar.eval(**valDict)
+    else:
+        fspec = qvar.spec
 
     dyn_map = symbolMapClass()
     temp_dynamic = {}
     if ensure_dynamic is not None:
         dyn_keys = list(ensure_dynamic.keys())
-        dyn_vals = ["self._pardict['%s']" %d for d in dyn_keys]
-        dyn_map.update(dict(zip(dyn_keys, dyn_vals)))
+        # _pardict will only be used if for FuncSpec output
+        if for_funcspec:
+            dyn_vals = ["self._pardict['%s']" %d for d in dyn_keys]
+            dyn_map.update(dict(zip(dyn_keys, dyn_vals)))
         eval_at_runtime.extend(dyn_keys)
         for k in dyn_keys:
             temp_dynamic[k] = Var(k)
@@ -522,11 +562,18 @@ def expr2fun(qexpr, ensure_args=None, ensure_dynamic=None, **values):
     # a new QuantSpec.
     #
     # first, get rid of hierarchical names before running eval, which will think
-    # they are objects!
-    free_h = [symb.replace('.', '_') for symb in free]
-    free_h_nonFS = [symb.replace('_', '.') for symb in free]
-    h_map.update(dict(zip(free_h_nonFS, free_h)))
-    free = free_h
+    # they are python objects!
+    if for_funcspec:
+        # These statements assume that no underscore-leading names are used, e.g. 'a._b'
+        assert '._' not in str(fspec)
+        # enforce unique in case e.g. 'K.n' and 'K_n' were both separately in free symbols
+        # otherwise end up with duplicates of 'K_n' in argument list later
+        free_h = makeSeqUnique([symb.replace('.', '_') for symb in free])
+        # Don't want to replace '_' in free names if not part of hierarchical name
+        # e.g. if it's a module name for non-funcspec use
+        free_h_nonFS = makeSeqUnique([symb.replace('_', '.') for symb in free])
+        h_map.update(dict(zip(free_h_nonFS, free_h)))
+        free = free_h
     defs = filteredDict(local_free, [k for k, v in local_free.items() if v is not None])
     local_free.update(dict(zip(free, [QuantSpec(symb) for symb in free])))
     scope = filteredDict(local_free, [k for k, v in local_free.items() if v is not None])
@@ -550,8 +597,13 @@ def expr2fun(qexpr, ensure_args=None, ensure_dynamic=None, **values):
             fspec_eval.mapNames(dyn_map)
         fspec_str = str(fspec_eval)
     else:
-        fspec_eval = _eval(fspec, eval_globals,
+        if for_funcspec:
+            # BUG? Why is dyn_map not used here when eval_at_runtime != []?
+            fspec_eval = _eval(fspec, eval_globals,
                            scope, eval_at_runtime)
+        else:
+            # no need to try to simplify
+            fspec_eval = fspec
 
     def append_call_parens(k):
         """For defined references to future fn_wrapper attributes that need
@@ -576,9 +628,17 @@ def expr2fun(qexpr, ensure_args=None, ensure_dynamic=None, **values):
         if eval_at_runtime != []:
             fspec.mapNames(dict(zip(mapnames,
                         ['self.'+k+append_call_parens(k) for k in mapnames])))
+            # replace any occurrences of eval-at-runtime parameters x
+            # with 'self._pardict[x]'
+            fspec.mapNames(dyn_map)
             fspec_str = str(fspec)
         else:
-            fspec_str = str(fspec_eval.renderForCode())
+            if for_funcspec:
+                fspec_str = str(fspec_eval.renderForCode())
+            else:
+                # fspec may be using indexing in special use cases (general python
+                # syntax such as dictionary indexing for non-core PyDSTool parsing)
+                fspec_str = str(fspec_eval)
     arglist = copy(free)
     if ensure_args is not None:
         arglist.extend(remain(ensure_args, free))
@@ -592,10 +652,115 @@ def expr2fun(qexpr, ensure_args=None, ensure_dynamic=None, **values):
     # imports as per header of Symbolic.py
     my_locals = locals()
     my_locals.update(math_globals)
+    if fn_name == '' or fn_name is None:
+        # make a random, unique name
+        import time
+        fn_name = 'fn_' + str(time.time()).replace('.', '_')
     # !!! PERFORM MAGIC
     def_str = """
 from __future__ import division
-class fn_wrapper(object):
+class """+fn_name+"""_fn_wrapper(object):
+    __name__ = '""" + fn_name + """'
+    def __call__(self""" + arglist_str + """):
+        return """ + fspec_str + """
+
+    def alt_call(self, keyed_arg):
+        return self.__call__(**filteredDict(self._namemap(keyed_arg), self._args))
+    """
+    if len(embed_funcs) > 0:
+        for fname, (fnsig, fndef) in embed_funcs.items():
+            if len(fnsig) > 0:
+                embed_sig_str = ", " + ", ".join(fnsig)
+            else:
+                embed_sig_str = ""
+            def_str += "\n    def " + fname + "(self" + embed_sig_str + \
+                       "):\n        return " + fndef
+    try:
+        six.exec_(def_str)
+    except:
+        print("Problem defining function:")
+        raise
+    cls = locals()[fn_name+'_fn_wrapper']
+    evalfunc = cls()
+    evalfunc.__dict__.update(defs)
+    if dyn_keys != [] and for_funcspec:
+        # Don't make copy of the dict to allow automatic update.
+        # We don't need _pardict for non-funcspec definitions.
+        evalfunc._pardict = ensure_dynamic
+    evalfunc._args = arglist
+    evalfunc._call_spec = fspec_str
+    evalfunc._namemap = h_map
+    # register the class in the global namespace to assist in pickling
+    g = globals()
+    g[cls.__name__] = cls
+    return evalfunc
+
+def nonworking_call_to_metaclass():
+    # test call to new metaclass for expr2fun
+    kwargs = {'fn_name': fn_name,
+              'arglist_str': arglist_str,
+              'fspec_str': fspec_str}
+    if len(embed_funcs) > 0:
+        embed_func_strs = {}
+        for fname, (fnsig, fndef) in embed_funcs.items():
+            if len(fnsig) > 0:
+                embed_sig_str = ", " + ", ".join(fnsig)
+            else:
+                embed_sig_str = ""
+            embed_func_strs[fname] = (embed_sig_str, fndef)
+        kwargs["embed_funcs"] = embed_func_strs
+    kwargs['arglist'] = arglist
+    kwargs['_call_spec'] = fspec_str
+    kwargs['_namemap'] = h_map
+    kwargs['defs'] = defs
+    if dyn_keys != [] and for_funcspec:
+        # Don't make copy of the dict to allow automatic update.
+        # We don't need _pardict for non-funcspec definitions.
+        kwargs["_pardict"] = ensure_dynamic
+
+    #class Y(object):
+    #    __metaclass__ = fn_wrapper
+    return fn_wrapper(kwargs) #type(fn_name, (Y,), kwargs)
+
+# Not working
+class fn_wrapper(type):
+    def __init__(cls, kwargs):
+        call_str = """def _call(self%s):
+            print "In call"
+            return %s
+            """ % (kwargs["arglist_str"], kwargs["fspec_str"])
+        alt_call_str = """def _alt_call(self, keyed_arg):
+            return self.__call__(**filteredDict(self._namemap(keyed_arg), self._args))
+
+        """
+        print("__init__ of fn_wrapper")
+        six.exec_(call_str)
+        six.exec_(alt_call_str)
+        setattr(cls, "__call__", types.MethodType(locals()['_call'], cls))
+        setattr(cls, "alt_call", types.MethodType(locals()['_alt_call'], cls))
+        setattr(cls, "__name__", kwargs["fn_name"])
+        setattr(cls, "_namemap", kwargs["_namemap"])
+        setattr(cls, "_args", kwargs["arglist"])
+        setattr(cls, "_call_spec", kwargs["fspec_str"])
+        if "embed_funcs" in kwargs:
+            for embed_fname, (embed_sig_str, embed_fdef_str) in kwargs["embed_funcs"].items():
+                ef_str = """def %s(self%s):
+                return %s
+                """ % (embed_fname, embed_sig_str, embed_fdef_str)
+                six.exec_(ef_str)
+                ef = locals()[embed_fname]
+                setattr(cls, embed_fname, types.MethodType(ef, cls))
+        if "defs" in kwargs:
+            for def_key, def_val in kwargs["defs"].items():
+                setattr(cls, def_key, def_val)
+
+
+def old_expr2fun_final():
+    # !!! PERFORM MAGIC
+    def_str = """
+from __future__ import division
+class """+fn_name+"""_fn_wrapper(object):
+    __name__ = '""" + fn_name + """'
     def __call__(self""" + arglist_str + """):
         return """ + fspec_str + """
 
@@ -604,19 +769,22 @@ class fn_wrapper(object):
 """
     if len(embed_funcs) > 0:
         for fname, (fnsig, fndef) in embed_funcs.items():
-            def_str += "\n    def " + fname + "(self"
             if len(fnsig) > 0:
-                def_str += ", " + ", ".join(fnsig)
-            def_str += "):\n        return " + fndef
+                embed_sig_str = ", " + ", ".join(fnsig)
+            else:
+                embed_sig_str = ""
+            def_str += "\n    def " + fname + "(self" + embed_sig_str + \
+                       "):\n        return " + fndef
     try:
-        six.exec_(def_str, locals(), globals())
+        six.exec_(def_str)
     except:
         print("Problem defining function:")
         raise
-    evalfunc = fn_wrapper()
+    evalfunc = locals()['fn_wrapper']()
     evalfunc.__dict__.update(defs)
-    if dyn_keys != []:
-        # don't make copy to allow automatic update
+    if dyn_keys != [] and for_funcspec:
+        # Don't make copy of the dict to allow automatic update.
+        # We don't need _pardict for non-funcspec definitions.
         evalfunc._pardict = ensure_dynamic
     evalfunc._args = arglist
     evalfunc._call_spec = fspec_str
@@ -638,7 +806,7 @@ def subs(qexpr, *bindings):
         qtemp = copy(qexpr)
         varname = ""
     for b in bindings:
-        if isinstance(b, list):
+        if isinstance(b, (list, tuple)):
             # in case called from a function when the bindings
             # cannot be unravelled in the call arguments
             for bentry in b:
@@ -711,14 +879,68 @@ def _generate_subderivatives(symbols, fnspecs):
 
 
 def prepJacobian(varspecs, coords, fnspecs=None, max_iter_depth=20):
-    """Returns a symbolic Jacobian and updated function specs to support
+    """Returns a symbolic Jacobian Var and updated function specs to support
     its definition from variable specifications. Only makes the Jacobian
     with respect to the named coordinates, which will be sorted into
-    alphabetical order.
+    alphabetical order. The *varspecs* specifications can be a dictionary
+    or a Symbolic Fun(ction) object of the coordinate variables given by
+    *coords* (and additional variables that will be ignored). The function
+    may have one additional and first argument for 't' if the system is
+    non-autonomous.
 
+    Coordinates will be rearranged into alphabetically sorted order.
     """
-    need_specs = filteredDict(varspecs, coords)
+    coords = list(coords) # in case of tuple or other immutable sequence
     coords.sort()
+    if isinstance(varspecs, Fun):
+        # either dim == number of coords or one fewer if 't' is included in
+        # the function signature, which should be the last argument anyway
+        D = varspecs.dim
+        siglen = len(varspecs.signature)
+        if siglen in (D, D + 1):
+            if D == len(coords):
+                # ensure coords and relevant signature elements are the same
+                if siglen == D+1:
+                    offset = 1
+                else:
+                    offset = 0
+                coords_sigorder = varspecs.signature[offset:]
+                try:
+                    ix_map = dict(zip(coords,[coords_sigorder.index(c) for c in coords]))
+                except:
+                    raise ValueError("Incompatible coords with function sig")
+                coords_sigorder.sort()
+                if coords_sigorder != coords:
+                    raise ValueError("Incompatible coords with function sig")
+                else:
+                    new_varspecs = {}
+                    for co in coords:
+                        new_varspecs[co] = varspecs.fromvector(ix_map[co])
+            elif D > len(coords):
+                # only a subset were chosen
+                # ensure each coord given is in signature
+                new_varspecs = {}
+                for co in coords:
+                    try:
+                        ix = varspecs.signature.index(co)
+                    except ValueError:
+                        raise ValueError("Incompatible coords with function sig")
+                    else:
+                        new_varspecs[co] = varspecs.fromvector(ix)
+            else:
+                raise ValueError("Mismatch of function dimension and coords")
+        else:
+            raise ValueError("Incompatible Function type for Jacobian")
+        if siglen == D+1:
+            # check that non-coord (usually 't') is first
+            if varspecs.signature[0] in coords:
+                raise ValueError("Cannot have coordinate variable first in Jac sig")
+        # keep record of old Fun
+        fun_var = varspecs
+        # overwrite with actual dictionary
+        varspecs = need_specs = new_varspecs
+    else:
+        need_specs = filteredDict(varspecs, coords)
     jac = Diff(sortedDictValues(need_specs), coords)
     free = jac.freeSymbols
     if fnspecs is None:
@@ -2708,10 +2930,13 @@ def dofun(l,r):
 qtypes = (Quantity, QuantSpec)
 
 def Diff(t, a):
-    """Diff expects strings, Quantity, or QuantSpec types,
-    a mixture of these, or a list of strings in second argument.
+    """Symbolic differentiation of argument t with respect to variables in a.
 
-    The return type is a QuantSpec.
+    Diff expects these arguments to be strings, Quantity, or QuantSpec types,
+    a mixture of these, or a list of strings.
+
+    The return type is a QuantSpec. To get the string version, either use DiffStr or
+    call the method q.renderForCode().specStr on the returned q object.
     """
 
     # deal with t -----------------------------------------

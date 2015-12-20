@@ -1,16 +1,9 @@
-PyDSTool v0.88
-==============
+PyDSTool
+========
 
+|buildstatus|_ |coverage|_
 
-.. image:: https://travis-ci.org/robclewley/pydstool.svg?branch=master
-   :target: https://travis-ci.org/robclewley/pydstool
-   :alt: Build Status
-
-.. image:: https://coveralls.io/repos/robclewley/pydstool/badge.png?branch=master
-   :target: https://coveralls.io/r/robclewley/pydstool?branch=master
-   :alt: Coverage Status
-
-April 2014. *This is a beta release version.*
+*This is a beta release version.*
 
 PyDSTool is a sophisticated & integrated simulation and analysis environment
 for dynamical systems models of physical systems (ODEs, DAEs, maps, and hybrid
@@ -33,9 +26,9 @@ See more at `pydstool.sourceforge.net <http://pydstool.sourceforge.net>`__.
 Requirements
 ~~~~~~~~~~~~
 
-*  `Python <http://www.python.org>`__ 2.6+ or 3.3+;
-*  `numpy <http://www.numpy.org>`__ > 1.6;
-*  `scipy <http://www.scipy.org>`__ > 0.9.
+*  `Python <http://www.python.org>`__ 2.7 or 3.3+;
+*  `numpy <http://www.numpy.org>`__;
+*  `scipy <http://www.scipy.org>`__.
 
 Dopri/Radau and AUTO interface requirements
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -90,10 +83,6 @@ Getting started and documentation
 See the `online documentation <http://pydstool.sourceforge.net>`__,
 particularly the GettingStarted and Tutorials pages! Please report bugs
 and suggestions using the user forum linked to there.
-
-Full API documentation can be found locally
-`here <./html/index.html>`__. It is auto-generated from the source code
-using Epydoc and is meant as a reference for functions and classes only.
 
 Tests and examples
 ~~~~~~~~~~~~~~~~~~
@@ -167,17 +156,6 @@ Getting coverage report
 
 *  open file ``htmlcov/index.html`` in your browser
 
-Change histories
-~~~~~~~~~~~~~~~~
-
-Older (pre-git) version change histories appear in the
-`bzr <http://pydstool.bzr.sourceforge.net/bzr/pydstool/changes>`__
-repository browser, and some older information is in the headers of each
-source file. An overview of the changes in a new release can be found in
-the SourceForge release notes.
-
---------------
-
 Credits
 ~~~~~~~
 
@@ -186,3 +164,12 @@ Zakharov, and John Guckenheimer, except where otherwise stated in the
 code or documentation. (Several other open source codes have been
 redistributed here under the compatible licenses.)
 
+--------------
+
+
+
+.. |buildstatus| image:: https://travis-ci.org/robclewley/pydstool.svg?branch=master
+.. _buildstatus: https://travis-ci.org/robclewley/pydstool
+
+.. |coverage| image:: https://coveralls.io/repos/robclewley/pydstool/badge.png?branch=master
+.. _coverage: https://coveralls.io/r/robclewley/pydstool?branch=master

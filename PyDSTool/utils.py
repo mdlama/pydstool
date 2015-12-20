@@ -3,15 +3,21 @@
 """
 from __future__ import absolute_import, print_function
 
+import os
+
+from distutils.util import get_platform
+from numpy.distutils import misc_util
 
 from .errors import *
 from .common import *
-from . import Redirector as redirc
 from .parseUtils import joinStrs
+from PyDSTool.core.context_managers import RedirectStdout
 
+# !! Replace use of these named imports with np.<X>
 from numpy import Inf, NaN, isfinite, less, greater, sometrue, alltrue, \
      searchsorted, take, argsort, array, swapaxes, asarray, zeros, transpose, \
      float64, int32, argmin, ndarray, concatenate
+import numpy as np
 from numpy.linalg import norm
 from scipy.optimize import minpack, zeros
 try:
@@ -35,17 +41,17 @@ _functions = ['intersect', 'remain', 'union', 'cartesianProduct',
               'findClosestArray', 'findClosestPointIndex', 'find',
               'makeMfileFunction', 'make_RHS_wrap', 'make_Jac_wrap',
               'progressBar', 'distutil_destination', 'architecture',
-              'extra_arch_arg']
+              'extra_arch_arg', 'arclength']
 
 _mappings = ['_implicitSolveMethods', '_1DimplicitSolveMethods']
 
 __all__ = _classes + _functions + _mappings
 
 
-rout = redirc.Redirector(redirc.STDOUT)
-rerr = redirc.Redirector(redirc.STDERR)
 
 ## ------------------------------------------------------------------
+# File for stdout redirecting
+_logfile = os.devnull
 
 ## Utility functions
 
@@ -164,87 +170,54 @@ def makeImplicitFunc(f, x0, fprime=None, extrafargs=(), xtolval=1e-8,
     try:
         if standalone:
             def newton_fn(t):
-                rout.start()
-##                rerr.start()
-                res = float(newton_meth(f, x0, args=(t,)+extrafargs, tol=xtolval,
-                                     maxiter=maxnumiter, fprime=fprime))
-                rout.stop()
-##                warns = rout.stop()
-##                rerr.stop()
-                # return {'result': res, 'warnings': warns}
-                return res
+                with RedirectStdout(_logfile):
+                    res = float(newton_meth(f, x0, args=(t,)+extrafargs, tol=xtolval,
+                                        maxiter=maxnumiter, fprime=fprime))
+                    return res
 
             def bisect_fn(t):
-                rout.start()
-##                rerr.start()
-                res = minpack.bisection(f, x0[0], x0[1], args=(t,)+extrafargs,
-                                      xtol=xtolval, maxiter=maxnumiter)
-                rout.stop()
-##                warns = rout.stop()
-##                rerr.stop()
-                return res
+                with RedirectStdout(_logfile):
+                    res = minpack.bisection(f, x0[0], x0[1], args=(t,)+extrafargs,
+                                        xtol=xtolval, maxiter=maxnumiter)
+                    return res
 
             def steffe_fn(t):
-                rout.start()
-##                rerr.start()
-                res = minpack.fixed_point(f, x0, args=(t,)+extrafargs,
-                                           xtol=xtolval, maxiter=maxnumiter)
-                rout.stop()
-##                warns = rout.stop()
-##                rerr.stop()
-                return res
+                with RedirectStdout(_logfile):
+                    res = minpack.fixed_point(f, x0, args=(t,)+extrafargs,
+                                            xtol=xtolval, maxiter=maxnumiter)
+                    return res
 
             def fsolve_fn(t):
-                rout.start()
-##                rerr.start()
-                res = minpack.fsolve(f, x0, args=(t,)+extrafargs,
-                                      xtol=xtolval, maxfev=maxnumiter,
-                                      fprime=fprime)
-                rout.stop()
-##                warns = rout.stop()
-##                rerr.stop()
-                return res
+                with RedirectStdout(_logfile):
+                    res = minpack.fsolve(f, x0, args=(t,)+extrafargs,
+                                        xtol=xtolval, maxfev=maxnumiter,
+                                        fprime=fprime)
+                    return res
         else:
             def newton_fn(s, t):
-                rout.start()
-##                rerr.start()
-                res = float(newton_meth(f, x0, args=(t,)+extrafargs, tol=xtolval,
-                                     maxiter=maxnumiter, fprime=fprime))
-                rout.stop()
-##                warns = rout.stop()
-##                rerr.stop()
-                return res
+                with RedirectStdout(_logfile):
+                    res = float(newton_meth(f, x0, args=(t,)+extrafargs, tol=xtolval,
+                                        maxiter=maxnumiter, fprime=fprime))
+                    return res
 
             def bisect_fn(s, t):
-                rout.start()
-##                rerr.start()
-                res = minpack.bisection(f, x0[0], x0[1], args=(t,)+extrafargs,
-                                      xtol=xtolval, maxiter=maxnumiter)
-                rout.stop()
-##                warns = rout.stop()
-##                rerr.stop()
-                return res
+                with RedirectStdout(_logfile):
+                    res = minpack.bisection(f, x0[0], x0[1], args=(t,)+extrafargs,
+                                        xtol=xtolval, maxiter=maxnumiter)
+                    return res
 
             def steffe_fn(s, t):
-                rout.start()
-##                rerr.start()
-                res = minpack.fixed_point(f, x0, args=(t,)+extrafargs,
-                                           xtol=xtolval, maxiter=maxnumiter)
-                rout.stop()
-##                warns = rout.stop()
-##                rerr.stop()
-                return res
+                with RedirectStdout(_logfile):
+                    res = minpack.fixed_point(f, x0, args=(t,)+extrafargs,
+                                            xtol=xtolval, maxiter=maxnumiter)
+                    return res
 
             def fsolve_fn(s, t):
-                rout.start()
-##                rerr.start()
-                res = minpack.fsolve(f, x0, args=(t,)+extrafargs,
-                                      xtol=xtolval, maxfev=maxnumiter,
-                                      fprime=fprime)
-                rout.stop()
-##                warns = rout.stop()
-##                rerr.stop()
-                return res
+                with RedirectStdout(_logfile):
+                    res = minpack.fsolve(f, x0, args=(t,)+extrafargs,
+                                        xtol=xtolval, maxfev=maxnumiter,
+                                        fprime=fprime)
+                    return res
 
     except TypeError as e:
         if solmethod == 'bisect':
@@ -614,15 +587,7 @@ def saveObjects(objlist, filename, force=False):
         if os.path.isfile(filename):
             raise ValueError("File '" + filename + "' already exists")
     pklfile = open(filename, 'wb')
-    # Win32 only: in call to pickle.dump ...
-    # DO NOT use binary option (or HIGHESTPROTOCOL) because
-    # IEE754 special values are not UNpickled correctly in Win32
-    # (you'll see no exception raised). This is a known bug
-    # and fixedpickle.py is a work-around. (June 2005)
-    if os.name == 'nt':
-        opt = None
-    else:
-        opt = 0
+    opt = 0
     if not isinstance(objlist, list):
         objlist=[objlist]
     for obj in objlist:
@@ -726,6 +691,16 @@ def cartesianProduct(a, b):
         ret.extend([(i, j) for j in b])
     return ret
 
+def arclength(pts):
+    """
+    Return array of L2 arclength progress along parameterized pointset
+    in all the dimensions of the pointset
+    """
+    x0 = pts[0]
+    arclength = np.zeros(len(pts))
+    for i, x in enumerate(pts[1:]):
+        arclength[i+1] = np.linalg.norm(x - pts[i]) + arclength[i]
+    return arclength
 
 
 # ------------------------
@@ -745,11 +720,9 @@ def distutil_destination():
     if osname == 'linux':
         destdir = 'src.'+osname+'-'+machinename+'-'+pyname[0] + '.' + pyname[1]
     elif osname in ['darwin', 'freebsd']:
-        osver = platform.mac_ver()[0].split('.')
-        if int(scipy.__version__.split('.')[1]) > 5 and len(osver)>1 and osver != ['']:
-            destdir = 'src.macosx-'+osver[0]+'.'+osver[1]+'-'+machinename+'-'+pyname[0] + '.' + pyname[1]
-        else:
-            destdir = 'src.'+osname+'-'+platform.release()+'-'+machinename+'-'+pyname[0] + '.' + pyname[1]
+        # use the same version string as numpy.distutils.core.setup used by ContClass.CompileAutoLib
+        osver = get_platform()
+        destdir = 'src.' + osver + '-' +pyname[0] + '.' + pyname[1]
     elif osname == 'windows':
         destdir = 'src.win32-'+pyname[0]+'.'+pyname[1]
     else:
@@ -781,3 +754,7 @@ def extra_arch_arg(arglist):
         return arglist + ['-m32']
     else:
         return arglist
+
+
+def get_lib_extension():
+    return misc_util.get_shared_lib_extension()
