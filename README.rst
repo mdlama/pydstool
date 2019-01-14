@@ -1,7 +1,10 @@
 PyDSTool
 ========
 
-|buildstatus|_ |coverage|_
+|buildstatus|_ |coverage|_ 
+
+.. image:: https://zenodo.org/badge/22658848.svg
+   :target: https://zenodo.org/badge/latestdoi/22658848
 
 *This is a beta release version.*
 
