@@ -43,8 +43,8 @@ scipy_specialfns = ['airy', 'airye', 'ai_zeros', 'bi_zeros', 'ellipj',
             'y0', 'y1', 'i0', 'i0e', 'i1', 'i1e', 'k0', 'k0e',
             'k1', 'k1e', 'itj0y0', 'it2j0y0', 'iti0k0', 'it2i0k0',
             'besselpoly', 'jvp', 'yvp', 'kvp', 'ivp', 'h1vp',
-            'h2vp', 'sph_jn', 'sph_yn', 'sph_jnyn', 'sph_in',
-            'sph_kn', 'sph_inkn', 'riccati_jn', 'riccati_yn',
+            'h2vp', 'spherical_jn', 'spherical_yn', 'spherical_in',
+            'spherical_kn', 'riccati_jn', 'riccati_yn',
             'struve', 'modstruve', 'itstruve0', 'it2struve0',
             'itmodstruve0', 'bdtr', 'bdtrc', 'bdtri', 'btdtr',
             'btdtri', 'fdtr', 'fdtrc', 'fdtri', 'gdtr', 'gdtrc',
@@ -230,7 +230,7 @@ def mapPowStr(t, p='**'):
 def toCircumflexSyntax(t):
     # R. Clewley
     if isinstance(t[0], str):
-        if t[0] == 'power':
+        if t[0] in ['power', 'atom_expr']:
             if t[2][0] == 'DOUBLESTAR':
                 return string2ast(ensureparen(dopower(ast2string(toCircumflexSyntax(t[1])),
                                     ast2string(toCircumflexSyntax(t[3])),
@@ -261,7 +261,7 @@ def toDoubleStarSyntax(t):
             tc[0] = 'power'
             tc[2] = ['DOUBLESTAR', '**']
             return toDoubleStarSyntax(string2ast(ast2string(tc)))   # yes, i mean this
-        if t[0] == 'power' and t[1] == ['NAME', 'pow']:
+        if t[0] in ['power', 'atom_expr'] and t[1] == ['NAME', 'pow']:
             return string2ast(ensureparen(mapPowStr(t,'**'),1))
     o = []
     for i in t:
@@ -278,7 +278,7 @@ def toDoubleStarSyntax(t):
 def toPowSyntax(t):
     # R. Clewley
     if isinstance(t[0],str):
-        if t[0] == 'power':
+        if t[0] in ['power', 'atom_expr']:
             try:
                 if t[2][0]=='DOUBLESTAR':
                     try:
@@ -1411,7 +1411,7 @@ class parserObject(object):
                                 if tokenized[-1] == '<':
                                     tokenized[-1] = '<='
                                 else:
-                                    tokenized[-1] = '<='
+                                    tokenized.append('<=')
                                 s = ''
                                 returnstr += stemp
                                 continue   # avoids returnstr += stemp below

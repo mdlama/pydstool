@@ -37,7 +37,7 @@ from scipy import linalg
 from numpy import dot as matrixmultiply
 from numpy import array, float, complex, int, float64, complex64, int32, \
      zeros, divide, subtract, argmax, identity, argsort, conjugate, sqrt, \
-     arange, Inf, NaN, isfinite, r_, c_, sign, mod, mat, sum, \
+     arange, Inf, NaN, isfinite, r_, c_, sign, mod, sum, \
      multiply, transpose, eye, real, imag, ndarray
 from math import pi as PI
 from copy import copy
@@ -175,7 +175,7 @@ def trilinearform(A, x1, x2, x3):
 
 def ijtoind(i, j):
     """ 0 <= j < i """
-    return i*(i-1)/2 + j
+    return i*(i-1)//2 + j
 
 def indtoij(ind):
     #size = array([n*(n-1)/2 - k*(k-1)/2 for k in range(1,n+1)])
@@ -190,7 +190,7 @@ def indtoij(ind):
     return i, j
 
 def testindij(n):
-    bn = n*(n-1)/2
+    bn = n*(n-1)//2
     print("Testing %d..." % n)
     for ind in range(bn):
         i, j = indtoij(ind)
@@ -201,7 +201,7 @@ def testindij(n):
 
 def wedge(u, v):
     n = u.shape[0]
-    bn = n*(n-1)/2
+    bn = n*(n-1)//2
     q = zeros((bn,1), float)
 
     for ind in range(bn):

@@ -1005,7 +1005,7 @@ def find_nullclines(gen, xname, yname, subdomain=None, fps=None, n=10,
                         y_null_part = crop_2D(array([P_y['null_curve_y'].sol[xname],
                                                      P_y['null_curve_y'].sol[yname]]).T,
                                               xinterval, yinterval)
-                        in_subom = len(y_null_part)>0
+                        in_subdom = len(y_null_part)>0
                         done = num_points > 15*loop_step
 
             # BACKWARD ###########
@@ -1042,7 +1042,7 @@ def find_nullclines(gen, xname, yname, subdomain=None, fps=None, n=10,
                         y_null_part = crop_2D(array([P_y['null_curve_y'].sol[xname],
                                                      P_y['null_curve_y'].sol[yname]]).T,
                                               xinterval, yinterval)
-                        in_subom = len(y_null_part)>0
+                        in_subdom = len(y_null_part)>0
                         done = num_points > 15*loop_step
 
             # overwrite y_null from fsolve, pre-PyCont
@@ -2484,7 +2484,8 @@ def make_distance_to_line_auxfn(linename, fname, p, by_vector_dp=True):
     or a point q, depending on the second input argument.
     Also returns list of parameter names used.
     """
-    assert len(p)==2 and isinstance(p[0], str) and isinstance(p[1], str)
+    assert len(p)==2 and isinstance(p[0], six.string_types) \
+           and isinstance(p[1], six.string_types)
     p0 = linename+'_p_'+p[0]
     p1 = linename+'_p_'+p[1]
     pars = [p0, p1]
@@ -4808,13 +4809,13 @@ class base_n_counter(object):
     def __init__(self, n, d):
         self._maxval = n-1
         self._d = d
-        self.counter = np.zeros((d,))
+        self.counter = np.zeros((d,), dtype=np.int)
 
     def inc(self):
         ix = 0
         while True:
             if ix == self._d:
-                self.counter = np.zeros((self._d,))
+                self.counter = np.zeros((self._d,), dtype=np.int)
                 break
             if self.counter[ix] < self._maxval:
                 self.counter[ix] += 1
@@ -4830,7 +4831,7 @@ class base_n_counter(object):
             raise IndexError("Invalid index for counter")
 
     def reset(self):
-        self.counter = np.zeros((self._d,))
+        self.counter = np.zeros((self._d,), dtype=np.int)
 
     def __str__(self):
         return str(self.counter.tolist())

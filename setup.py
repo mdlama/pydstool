@@ -77,16 +77,30 @@ class PyTest(TestCommand):
         sys.exit(errno)
 
 
+def get_datafiles():
+    source_dirs = ['examples', 'tests']
+    datafiles = []
+    for s in source_dirs:
+        for d, _, files in os.walk(s):
+            datafiles.append((d, [os.path.join(d, f) for f in files]))
+    return datafiles
+
+
+needs_pytest = {'test', 'pytest', 'ptr'}.intersection(sys.argv)
+pytest_runner = ['pytest-runner'] if needs_pytest else []
+
+
 setup(
     name="PyDSTool",
     version=__version__,
     packages=find_packages(),
+    setup_requires=pytest_runner,
     install_requires=[
         "six",
-        "scipy>=0.9",
+        "scipy>=1.0,<2.0",
         "numpy>=1.6"
     ],
-    tests_require=['pytest', 'mock', 'pytest-xdist'],
+    tests_require=['pytest', 'pytest-mock', 'pytest-xdist'],
     cmdclass={
         'test': PyTest,
         'clean': clean
@@ -106,6 +120,7 @@ setup(
     package_data={
         '': ['*.txt', '*.rst'],
     },
+    data_files=get_datafiles(),
     classifiers=[
         "Development Status :: 4 - Beta",
         "Topic :: Scientific/Engineering",

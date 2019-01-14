@@ -16,6 +16,8 @@ from numpy import Inf, NaN, isfinite, sometrue, alltrue
 import math, random
 import os
 from copy import copy, deepcopy
+import six
+
 # -----------------------------------------------------------------------------
 
 __all__ = ['ctsGen', 'discGen', 'theGenSpecHelper', 'Generator',
@@ -254,7 +256,7 @@ class Generator(object):
         # If part of a Model, keep a reference to which one this
         # Generator belongs to
         if 'model' in kw:
-            assert isinstance(kw['model'], str), "model tag must be a string"
+            assert isinstance(kw['model'], six.string_types), "model tag must be a string"
             self._modeltag = kw['model']
             self.foundKeys += 1
         else:
@@ -282,7 +284,7 @@ class Generator(object):
         if 'eventPars' in kw:
             if isinstance(kw['eventPars'], list):
                 self._eventPars = kw['eventPars']
-            elif isinstance(kw['eventPars'], str):
+            elif isinstance(kw['eventPars'], six.string_types):
                 self._eventPars.append(kw['eventPars'])
             self.foundKeys += 1
             self._eventPars = self._FScompatibleNames(self._eventPars)
@@ -294,7 +296,7 @@ class Generator(object):
         """Register parameter names as event specific parameters."""
         if isinstance(eventPars, list):
             self._eventPars.extend(self._FScompatibleNames(eventPars))
-        elif isinstance(eventPars, str):
+        elif isinstance(eventPars, six.string_types):
             self._eventPars.append(self._FScompatibleNames(eventPars))
 
     def getEvents(self, evnames=None, asGlobalTime=True):
@@ -317,7 +319,7 @@ class Generator(object):
             t_offset = self.globalt0
         else:
             t_offset = 0
-        if isinstance(evnames, str):
+        if isinstance(evnames, six.string_types):
             # singleton
             assert evnames in compat_evnames, "Invalid event name provided: %s"%evnames
             try:
@@ -366,7 +368,7 @@ class Generator(object):
         compat_evnames = self._FScompatibleNamesInv(list(self.trajevents.keys()))
         if evnames is None:
             evnames = compat_evnames
-        if isinstance(evnames, str):
+        if isinstance(evnames, six.string_types):
             # singleton
             assert evnames in compat_evnames, "Invalid event name provided: %s"%evnames
             try:
@@ -397,7 +399,7 @@ class Generator(object):
          'ics', 'initialconditions', 'vars', 'variables',
          'auxvars', 'auxvariables', 'vardomains'
          """
-        assert isinstance(querykey, str), \
+        assert isinstance(querykey, six.string_types), \
                        ("Query argument must be a single string")
         if querykey not in self._querykeys:
             print('Valid query keys are: %r' % (self._querykeys, ))
@@ -472,10 +474,12 @@ class Generator(object):
     def _kw_process_varspecs(self, kw, fs_args):
         if 'varspecs' in kw:
             for varname, varspec in kw['varspecs'].items():
-                if not isinstance(varname, (str, QuantSpec, Quantity)):
+                if not isinstance(varname, (six.string_types, QuantSpec,
+                                            Quantity)):
                     print("Expected string, QuantSpec, or Quantity to name variable, got type %s" %(type(varname)))
                     raise PyDSTool_TypeError("Invalid type for Variable name: %s"%str(varname))
-                if not isinstance(varspec, (str, QuantSpec, Quantity)):
+                if not isinstance(varspec, (six.string_types, QuantSpec,
+                                            Quantity)):
                     print("Expected string, QuantSpec, or Quantity definition for %s, got type %s" %(varname, type(varspec)))
                     raise PyDSTool_TypeError("Invalid type for Variable %s's specification."%varname)
             self.foundKeys += 1
@@ -519,7 +523,7 @@ class Generator(object):
     def _kw_process_tdomain(self, kw, fs_args):
         if 'tdomain' in kw:
             self.tdomain = kw['tdomain']
-            if self.tdomain[0] >= self.tdomain[1]:
+            if not self._is_domain_ordered(self.tdomain[0], self.tdomain[1]):
                 print("Time domain specified: [%s, %s]"%(self.tdomain[0],
                                                          self.tdomain[1]))
                 raise PyDSTool_ValueError("tdomain values must be in order of "
@@ -705,6 +709,16 @@ class Generator(object):
                 else:
                     self.xtype[name] = float
 
+    def _is_domain_ordered(self, left_bound, right_bound):
+        try:
+            return left_bound <= right_bound
+        except TypeError:
+            # non-numeric types are unorderable
+            if isinstance(left_bound, QuantSpec):
+                return self._is_domain_ordered(
+                    float(str(left_bound)), float(str(right_bound)))
+            return True
+
     def _kw_process_xdomain(self, kw, fs_args):
         if 'xdomain' in kw:
             self.xdomain = {}
@@ -713,11 +727,11 @@ class Generator(object):
                 if isinstance(v, _seq_types):
                     assert len(v) == 2, \
                            "Invalid size of domain specification for "+name
-                    if v[0] >= v[1]:
+                    if self._is_domain_ordered(v[0], v[1]):
+                        self.xdomain[name] = copy(v)
+                    else:
                         raise PyDSTool_ValueError('xdomain values must be in'
                                                   'order of increasing size')
-                    else:
-                        self.xdomain[name] = copy(v)
                 elif isinstance(v, _num_types):
                     self.xdomain[name] = [v, v]
                 else:
@@ -791,7 +805,7 @@ class Generator(object):
                                "Invalid size of domain specification for "+k
                     self.pdomain[self._FScompatibleNames(str(k))] = v
                 for name in self.pdomain:
-                    if self.pdomain[name][0] >= self.pdomain[name][1]:
+                    if not self._is_domain_ordered(self.pdomain[name][0], self.pdomain[name][1]):
                         raise PyDSTool_ValueError('pdomain values must be in order of increasing size')
                 for name in remain(self.pars.keys(), self.pdomain.keys()):
                     self.pdomain[name] = [-Inf, Inf]
@@ -1284,7 +1298,7 @@ class Generator(object):
         refering to the internal (dynamic) call methods."""
 
         if gentypes is not None:
-            if isinstance(gentypes, str):
+            if isinstance(gentypes, six.string_types):
                 gentypes = [gentypes]
             for s in gentypes:
                 assert s in ['variables', 'inputs', 'pars'], \
@@ -1373,11 +1387,17 @@ class Generator(object):
                 try:
                     delattr(eval(finfo[0]), fname)
                 except AttributeError:
+                    # nothing to delete, fname no longer an attribute
                     pass
-                except NameError:
+                except (NameError, SyntaxError):
+                    # NameError:
                     # not sure what happens here, but some other names
                     # may be deleted before all references to them have
                     # been deleted, but it's very non-fatal to ignore.
+                    # SyntaxError:
+                    # Also unsure, but sometimes finfo[0] is None
+                    # (rather than the usual 'self') so cannot evaluate
+                    # to object.
                     pass
             if hasattr(self, 'eventstruct'):
                 if self.eventstruct is not None:
@@ -1473,7 +1493,7 @@ class GenSpecHelper(object):
 
     def __call__(self, subject):
         try:
-            if isinstance(subject, str):
+            if isinstance(subject, six.string_types):
                 return self.gshDB[subject]
             else:
                 return self.gshDB[className(subject)]
